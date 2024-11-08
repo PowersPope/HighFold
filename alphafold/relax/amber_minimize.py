@@ -83,57 +83,57 @@ def _openmm_minimize(
     restraint_set: str,
     exclude_residues: Sequence[int],
     use_gpu: bool):
-  """Minimize energy via openmm."""
+    """Minimize energy via openmm."""
 
-  pdb_file = io.StringIO(pdb_str)
-  pdb = openmm_app.PDBFile(pdb_file)
+    pdb_file = io.StringIO(pdb_str)
+    pdb = openmm_app.PDBFile(pdb_file)
 
-  # Add bond to n-c peptide bond
-  residue_list = [i for i in pdb.topology.residues()]
-  hydrogens_list = list()
-  residue1 = residue_list[0]
-  last_residue = residue_list[-1]
+    # Add bond to n-c peptide bond
+    residue_list = [i for i in pdb.topology.residues()]
+    hydrogens_list = list()
+    residue1 = residue_list[0]
+    last_residue = residue_list[-1]
 
-  # select hydrogen atoms to remove and select N and C atoms to bond
-  hydrogens_list.extend([a for i, a in enumerate(residue1.atoms()) if i in [2,3]])
-  hydrogens_list.extend([a for i, a in enumerate(last_residue.atoms()) if i in [15]])
-  n_termini = [a for i, a in enumerate(residue1.atoms()) if i == 0][0]
-  c_termini = [a for i, a in enumerate(last_residue.atoms()) if i == 4][0]
+    # select hydrogen atoms to remove and select N and C atoms to bond
+    hydrogens_list.extend([a for a in residue1.atoms() if a.name in ["H3", "H2"]])
+    hydrogens_list.extend([a for a in last_residue.atoms() if a.name == "OXT"])
+    n_termini = [a for a in residue1.atoms() if a.name == "N"][0]
+    c_termini = [a for a in last_residue.atoms() if a.name == "C"][0]
 
-  # Add the peptide bond
-  pdb.topology.addBond(n_termini, c_termini, type="Amide", order=1)
-  # Remove Hydrogens that are not necessary
-  model = openmm_app.Modeller(pdb.topology, pdb.positions)
-  model.delete(hydrogens_list)
+    # Add the peptide bond
+    pdb.topology.addBond(n_termini, c_termini, type="Amide", order=1)
+    # Remove Hydrogens that are not necessary
+    model = openmm_app.Modeller(pdb.topology, pdb.positions)
+    model.delete(hydrogens_list)
 
-  force_field = openmm_app.ForceField("amber99sb.xml")
-  constraints = openmm_app.HBonds
-  system = force_field.createSystem(
-      model.topology, constraints=constraints)
-      #pdb.topology, constraints=constraints)
-  if stiffness > 0 * ENERGY / (LENGTH**2):
-    #_add_restraints(system, pdb, stiffness, restraint_set, exclude_residues)
-    _add_restraints(system, model, stiffness, restraint_set, exclude_residues)
+    force_field = openmm_app.ForceField("amber99sb.xml")
+    constraints = openmm_app.HBonds
+    system = force_field.createSystem(
+        model.topology, constraints=constraints)
+        #pdb.topology, constraints=constraints)
+    if stiffness > 0 * ENERGY / (LENGTH**2):
+      #_add_restraints(system, pdb, stiffness, restraint_set, exclude_residues)
+      _add_restraints(system, model, stiffness, restraint_set, exclude_residues)
 
-  integrator = openmm.LangevinIntegrator(0, 0.01, 0.0)
-  platform = openmm.Platform.getPlatformByName("CUDA" if use_gpu else "CPU")
-  simulation = openmm_app.Simulation(
-      model.topology, system, integrator, platform)
-      #pdb.topology, system, integrator, platform)
-  simulation.context.setPositions(model.positions)
-  #simulation.context.setPositions(pdb.positions)
+    integrator = openmm.LangevinIntegrator(0, 0.01, 0.0)
+    platform = openmm.Platform.getPlatformByName("CUDA" if use_gpu else "CPU")
+    simulation = openmm_app.Simulation(
+        model.topology, system, integrator, platform)
+        #pdb.topology, system, integrator, platform)
+    simulation.context.setPositions(model.positions)
+    #simulation.context.setPositions(pdb.positions)
 
-  ret = {}
-  state = simulation.context.getState(getEnergy=True, getPositions=True)
-  ret["einit"] = state.getPotentialEnergy().value_in_unit(ENERGY)
-  ret["posinit"] = state.getPositions(asNumpy=True).value_in_unit(LENGTH)
-  simulation.minimizeEnergy(maxIterations=max_iterations,
-                            tolerance=tolerance)
-  state = simulation.context.getState(getEnergy=True, getPositions=True)
-  ret["efinal"] = state.getPotentialEnergy().value_in_unit(ENERGY)
-  ret["pos"] = state.getPositions(asNumpy=True).value_in_unit(LENGTH)
-  ret["min_pdb"] = _get_pdb_string(simulation.topology, state.getPositions())
-  return ret
+    ret = {}
+    state = simulation.context.getState(getEnergy=True, getPositions=True)
+    ret["einit"] = state.getPotentialEnergy().value_in_unit(ENERGY)
+    ret["posinit"] = state.getPositions(asNumpy=True).value_in_unit(LENGTH)
+    simulation.minimizeEnergy(maxIterations=max_iterations,
+                              tolerance=tolerance)
+    state = simulation.context.getState(getEnergy=True, getPositions=True)
+    ret["efinal"] = state.getPotentialEnergy().value_in_unit(ENERGY)
+    ret["pos"] = state.getPositions(asNumpy=True).value_in_unit(LENGTH)
+    ret["min_pdb"] = _get_pdb_string(simulation.topology, state.getPositions())
+    return ret
 
 
 def _get_pdb_string(topology: openmm_app.Topology, positions: unit.Quantity):

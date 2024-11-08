@@ -27,10 +27,14 @@ from alphafold.relax import utils
 import ml_collections
 import numpy as np
 import jax
-from simtk import openmm
-from simtk import unit
-from simtk.openmm import app as openmm_app
-from simtk.openmm.app.internal.pdbstructure import PdbStructure
+import openmm
+from openmm import unit
+from openmm import app as openmm_app
+from openmm.app.internal.pdbstructure import PdbStructure
+# from simtk import openmm
+# from simtk import unit
+# from simtk.openmm import app as openmm_app
+# from simtk.openmm.app.internal.pdbstructure import PdbStructure
 
 
 ENERGY = unit.kilocalories_per_mole
@@ -70,25 +74,6 @@ def _add_restraints(
                force.getNumParticles(), system.getNumParticles())
   system.addForce(force)
 
-  ## Add in n-c peptide bond during relaxation
-  bond_distance = 1.33
-
-  # select atoms to perform restrain/constraint on
-  n_termini_atom = 0
-  c_termini_atom = len(reference_pdb.positions) - 1
-
-  # Add a custom bond force for the peptide bond
-  peptide_bond_force = openmm.CustomBondForce(
-      "0.5 * k * ((x-x0)^2 + (y-y0)^2 + (z-z0)^2)")
-  peptide_bond_force.addPerBondParameter("bond_distance")
-  peptide_bond_force.addPerBondParameter("k")
-
-  # Add the bond force constraint
-  peptide_bond_force.addBond(n_termini_atom, c_termini_atom, [bond_distance])
-
-  # add to the system
-  system.addForce(peptide_bond_force)
-
 
 def _openmm_minimize(
     pdb_str: str,
@@ -103,18 +88,40 @@ def _openmm_minimize(
   pdb_file = io.StringIO(pdb_str)
   pdb = openmm_app.PDBFile(pdb_file)
 
+  # Add bond to n-c peptide bond
+  residue_list = [i for i in pdb.topology.residues()]
+  hydrogens_list = list()
+  residue1 = residue_list[0]
+  last_residue = residue_list[-1]
+
+  # select hydrogen atoms to remove and select N and C atoms to bond
+  hydrogens_list.extend([a for i, a in enumerate(residue1.atoms()) if i in [2,3]])
+  hydrogens_list.extend([a for i, a in enumerate(last_residue.atoms()) if i in [15]])
+  n_termini = [a for i, a in enumerate(residue1.atoms()) if i == 0][0]
+  c_termini = [a for i, a in enumerate(last_residue.atoms()) if i == 4][0]
+
+  # Add the peptide bond
+  pdb.topology.addBond(n_termini, c_termini, type="Amide", order=1)
+  # Remove Hydrogens that are not necessary
+  model = openmm_app.Modeller(pdb.topology, pdb.positions)
+  model.delete(hydrogens_list)
+
   force_field = openmm_app.ForceField("amber99sb.xml")
   constraints = openmm_app.HBonds
   system = force_field.createSystem(
-      pdb.topology, constraints=constraints)
+      model.topology, constraints=constraints)
+      #pdb.topology, constraints=constraints)
   if stiffness > 0 * ENERGY / (LENGTH**2):
-    _add_restraints(system, pdb, stiffness, restraint_set, exclude_residues)
+    #_add_restraints(system, pdb, stiffness, restraint_set, exclude_residues)
+    _add_restraints(system, model, stiffness, restraint_set, exclude_residues)
 
   integrator = openmm.LangevinIntegrator(0, 0.01, 0.0)
   platform = openmm.Platform.getPlatformByName("CUDA" if use_gpu else "CPU")
   simulation = openmm_app.Simulation(
-      pdb.topology, system, integrator, platform)
-  simulation.context.setPositions(pdb.positions)
+      model.topology, system, integrator, platform)
+      #pdb.topology, system, integrator, platform)
+  simulation.context.setPositions(model.positions)
+  #simulation.context.setPositions(pdb.positions)
 
   ret = {}
   state = simulation.context.getState(getEnergy=True, getPositions=True)

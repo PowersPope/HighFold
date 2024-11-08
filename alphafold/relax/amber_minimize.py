@@ -70,6 +70,25 @@ def _add_restraints(
                force.getNumParticles(), system.getNumParticles())
   system.addForce(force)
 
+  ## Add in n-c peptide bond during relaxation
+  bond_distance = 1.33
+
+  # select atoms to perform restrain/constraint on
+  n_termini_atom = 0
+  c_termini_atom = len(reference_pdb.positions) - 1
+
+  # Add a custom bond force for the peptide bond
+  peptide_bond_force = openmm.CustomBondForce(
+      "0.5 * k * ((x-x0)^2 + (y-y0)^2 + (z-z0)^2)")
+  peptide_bond_force.addPerBondParameter("bond_distance")
+  peptide_bond_force.addPerBondParameter("k")
+
+  # Add the bond force constraint
+  peptide_bond_force.addBond(n_termini_atom, c_termini_atom, [bond_distance])
+
+  # add to the system
+  system.addForce(peptide_bond_force)
+
 
 def _openmm_minimize(
     pdb_str: str,

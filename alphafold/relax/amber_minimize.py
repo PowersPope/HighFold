@@ -88,8 +88,27 @@ def _openmm_minimize(
     pdb_file = io.StringIO(pdb_str)
     pdb = openmm_app.PDBFile(pdb_file)
 
+    # Grab chains
+    chain_info = [c for c in pdb.topology.chains()]
+    # Set placeholder variables
+    chain_min_len = float("inf")
+    smallest_chain = 0
+    # If there are multiple chains, then we want the smallest one (our peptide most likely)
+    if len(chain_info) > 1:
+        # iter through chains
+        for ch_i, chain in enumerate(chain_info):
+            # check if this is the smallest chain
+            chain_len = len([r for r in chain.residues()])
+            # Add if they are smaller
+            if chain_len < chain_min_len:
+                chain_min_len = chain_len
+                smallest_chain = chain
+
+    # now specify chain to use for if multimer or monomer
+    topology_input = smallest_chain if len(chain_info) > 1 else pdb.topology
+
     # Add bond to n-c peptide bond
-    residue_list = [i for i in pdb.topology.residues()]
+    residue_list = [i for i in topology_input.residues()]
     hydrogens_list = list()
     residue1 = residue_list[0]
     last_residue = residue_list[-1]

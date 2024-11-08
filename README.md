@@ -24,7 +24,9 @@ bashCopy highfold/
 
 ### Installation
 
-You can install the ColabFold by the script LocalColabFold (details on https://github.com/YoshitakaMo/localcolabfold) at first, and then copy the source codes of HighFold into the installed ColabFold preject.
+You can install the ColabFold by the script LocalColabFold (details on https://github.com/YoshitakaMo/localcolabfold) at first, and then copy the source codes of HighFold into the installed ColabFold project.
+
+As an example, within your localcolabfold directory `<path-to-dir>/localcolabfold/colabfold-conda/lib/python3.10/site-packages/`. You need to delete your `alphafold/` and `colabfold/` directories. Then replace them with the `alphafold/, colabfold/, and utils/` directories from this repo!
 
 ### Data Preparation
 
